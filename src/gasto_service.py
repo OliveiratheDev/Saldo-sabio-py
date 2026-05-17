@@ -44,12 +44,23 @@ class GastoService:
                 if intencao:
                     if intencao.get("intencao") == "marcar_pago" and intencao.get("gasto_id"):
                         acao_sistema = self._marcar_pago_por_id(intencao["gasto_id"])
-                    elif intencao.get("intencao") == "registrar_gasto" and intencao.get("valor") and intencao.get("descricao"):
+                    elif intencao.get("intencao") == "registrar_gasto" and intencao.get("descricao"):
                         try:
-                            valor = float(intencao["valor"])
-                            if valor > 0:
+                            valor = float(intencao.get("valor") if intencao.get("valor") is not None else 0.0)
+                            if valor >= 0:
                                 p = bool(intencao.get("pago", True))
-                                acao_sistema = self._criar_gasto(valor=valor, descricao=str(intencao["descricao"]), pago=p)
+                                data_parsed = None
+                                if intencao.get("data_lembrete"):
+                                    try:
+                                        data_parsed = datetime.fromisoformat(intencao["data_lembrete"])
+                                    except Exception:
+                                        pass
+                                acao_sistema = self._criar_gasto(
+                                    valor=valor,
+                                    descricao=str(intencao["descricao"]),
+                                    pago=p,
+                                    data=data_parsed
+                                )
                         except ValueError:
                             pass
 
@@ -78,17 +89,18 @@ class GastoService:
                 return valor, descricao
         return None
 
-    def _criar_gasto(self, valor: float, descricao: str, pago: bool = True) -> str:
+    def _criar_gasto(self, valor: float, descricao: str, pago: bool = True, data: datetime = None) -> str:
         classificacao = self.ai.classificar(descricao=descricao, valor=valor)
         gasto = Gasto(
             sender=self.sender,
             valor=valor,
             descricao=descricao,
-            data=datetime.now(),
+            data=data or datetime.now(),
             pago=pago,
             categoria=classificacao["categoria"],
             classificacao_score=classificacao["score"],
             classificacao_fonte=classificacao["fonte"],
+            notificado=False,
         )
         self.db.add(gasto)
         self.db.commit()

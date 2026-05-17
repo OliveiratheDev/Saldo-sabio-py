@@ -15,8 +15,19 @@ from models import Gasto
 
 def validar_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     if not API_KEY:
-        raise HTTPException(status_code=500, detail="API_KEY não configurada")
+        return
     if not x_api_key or not secrets.compare_digest(x_api_key, API_KEY):
+        raise HTTPException(status_code=401, detail="API key inválida")
+
+
+def validar_api_key_webhook(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    api_key: str | None = None,
+):
+    key = x_api_key or api_key
+    if not API_KEY:
+        return
+    if not key or not secrets.compare_digest(key, API_KEY):
         raise HTTPException(status_code=401, detail="API key inválida")
 
 
@@ -26,7 +37,9 @@ def get_user_id(x_user_id: str | None = Header(default=None, alias="X-User-Id"))
     return x_user_id.strip()
 
 
-router = APIRouter(prefix="/api", dependencies=[Depends(validar_api_key)])
+router = APIRouter()
+public_router = APIRouter(prefix="/api")
+api_router = APIRouter(prefix="/api", dependencies=[Depends(validar_api_key)])
 
 
 class GastoPayload(BaseModel):
@@ -40,11 +53,12 @@ class ChatPayload(BaseModel):
     pergunta: str
 
 
-@router.post("/whatsapp/webhook", response_class=Response)
+@public_router.post("/whatsapp/webhook", response_class=Response)
 def receber_whatsapp(
     body: str = Form(default="", alias="Body"),
     sender: str = Form(default="", alias="From"),
     db: Session = Depends(get_db),
+    _ = Depends(validar_api_key_webhook),
 ):
     service = GastoService(db)
     resposta = service.processar_mensagem_zap(body, sender=sender)
@@ -52,17 +66,17 @@ def receber_whatsapp(
     return Response(content=twiml, media_type="application/xml")
 
 
-@router.get("/gastos")
+@api_router.get("/gastos")
 def listar_todos(user_id: str = Depends(get_user_id), db: Session = Depends(get_db)):
     return db.query(Gasto).filter(Gasto.sender == user_id).all()
 
 
-@router.get("/gastos/pendentes")
+@api_router.get("/gastos/pendentes")
 def listar_pendentes(user_id: str = Depends(get_user_id), db: Session = Depends(get_db)):
     return db.query(Gasto).filter(Gasto.sender == user_id, Gasto.pago.is_(False)).all()
 
 
-@router.post("/gastos")
+@api_router.post("/gastos")
 def salvar(gasto: GastoPayload, user_id: str = Depends(get_user_id), db: Session = Depends(get_db)):
     novo = Gasto(
         sender=user_id,
@@ -77,7 +91,7 @@ def salvar(gasto: GastoPayload, user_id: str = Depends(get_user_id), db: Session
     return novo
 
 
-@router.delete("/gastos/{gasto_id}")
+@api_router.delete("/gastos/{gasto_id}")
 def deletar(gasto_id: int, user_id: str = Depends(get_user_id), db: Session = Depends(get_db)):
     gasto = db.query(Gasto).filter(Gasto.id == gasto_id, Gasto.sender == user_id).first()
     if gasto:
@@ -87,16 +101,20 @@ def deletar(gasto_id: int, user_id: str = Depends(get_user_id), db: Session = De
 
 
 
-@router.get("/insights/resumo")
+@api_router.get("/insights/resumo")
 def resumo_insights(user_id: str = Depends(get_user_id), db: Session = Depends(get_db)):
     service = InsightsService(db, sender=user_id)
     return service.resumo()
 
 
-@router.post("/agent/chat")
+@api_router.post("/agent/chat")
 def chat_agente(payload: ChatPayload, user_id: str = Depends(get_user_id), db: Session = Depends(get_db)):
     service = ChatAgentService(db, sender=user_id)
     try:
         return service.responder(payload.pergunta)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+router.include_router(public_router)
+router.include_router(api_router)

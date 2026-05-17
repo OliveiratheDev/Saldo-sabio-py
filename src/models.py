@@ -14,6 +14,7 @@ class WhatsappSession(Base):
     modo = Column(String, nullable=False, default="menu")  # "menu" | "assistente"
     limite_mensal = Column(Float, nullable=True)
     atualizado_em = Column(DateTime, default=datetime.now)
+    ultimo_resumo_em = Column(DateTime, nullable=True)
 
 
 class Gasto(Base):
@@ -28,6 +29,7 @@ class Gasto(Base):
     categoria = Column(String, nullable=True)
     classificacao_score = Column(Float, nullable=True)
     classificacao_fonte = Column(String, nullable=True)
+    notificado = Column(Boolean, default=False)
 
 
 class AgentAuditLog(Base):

@@ -36,3 +36,9 @@ def _run_lightweight_migrations():
                 conn.execute(text("ALTER TABLE gastos ADD COLUMN classificacao_score FLOAT"))
             if "classificacao_fonte" not in cols:
                 conn.execute(text("ALTER TABLE gastos ADD COLUMN classificacao_fonte VARCHAR"))
+            if "notificado" not in cols:
+                conn.execute(text("ALTER TABLE gastos ADD COLUMN notificado BOOLEAN DEFAULT 0"))
+        if "whatsapp_sessions" in inspector.get_table_names():
+            cols = {col["name"] for col in inspector.get_columns("whatsapp_sessions")}
+            if "ultimo_resumo_em" not in cols:
+                conn.execute(text("ALTER TABLE whatsapp_sessions ADD COLUMN ultimo_resumo_em DATETIME"))

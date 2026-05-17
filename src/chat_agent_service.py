@@ -20,18 +20,40 @@ class ChatAgentService:
 
     def responder(self, pergunta: str, acao_sistema: str = None) -> dict:
         self._validar_pergunta(pergunta)
+        enviar_resumo_completo = self._verificar_e_atualizar_envio_resumo()
         contexto = self._gerar_contexto()
-        resposta = self._responder_com_llm(pergunta, contexto, acao_sistema) or self._responder_local(
+        resposta = self._responder_com_llm(pergunta, contexto, acao_sistema, enviar_resumo_completo) or self._responder_local(
             pergunta, contexto
         )
         self._auditar(pergunta=pergunta, resposta=resposta, origem="chat")
         return {"resposta": resposta, "contexto": contexto}
 
+    def _verificar_e_atualizar_envio_resumo(self) -> bool:
+        if not self.sender:
+            return True
+        session = self.db.query(WhatsappSession).filter(WhatsappSession.sender == self.sender).first()
+        if not session:
+            return True
+            
+        agora = datetime.now()
+        ultimo = session.ultimo_resumo_em
+        
+        # Se nunca enviou ou o último envio foi em um dia diferente
+        if not ultimo or (ultimo.year != agora.year or ultimo.month != agora.month or ultimo.day != agora.day):
+            session.ultimo_resumo_em = agora
+            self.db.commit()
+            return True
+            
+        return False
+
     def _validar_pergunta(self, pergunta: str):
         if not pergunta or not pergunta.strip():
             raise ValueError("Sua mensagem está vazia. Pode repetir?")
-        bloqueios = ["transferir", "pix", "pagar", "comprar", "investir", "aplicar"]
         lower = pergunta.lower()
+        # Se for um pedido de lembrete ou agendamento, não bloqueia pelo guardrail
+        if "lembr" in lower or "agend" in lower:
+            return
+        bloqueios = ["faça um pix", "fazer pix", "enviar pix", "realizar pix", "transferir din", "fazer transfer", "realizar pag"]
         if any(token in lower for token in bloqueios):
             raise ValueError(
                 "Guardrail: este agente apenas analisa dados e nao executa operacoes financeiras."
@@ -139,7 +161,7 @@ class ChatAgentService:
             "- busca: 'quanto gastei em mercado?'"
         )
 
-    def _responder_com_llm(self, pergunta: str, contexto: dict, acao_sistema: str = None) -> str | None:
+    def _responder_com_llm(self, pergunta: str, contexto: dict, acao_sistema: str = None, enviar_resumo_completo: bool = True) -> str | None:
         if not OPENAI_API_KEY:
             return None
             
@@ -155,9 +177,11 @@ class ChatAgentService:
             "Responda de forma extremamente natural, humana, leve e conversacional, como se fosse um parceiro de finanças conversando no WhatsApp. Use emojis adequados! "
             "IMPORTANTE 1: Analise o total_mes, o limite_mensal e o delta_mes_vs_anterior no Contexto. Se o usuário estiver gastando muito (ex: ultrapassando ou chegando perto do limite, ou com o delta muito alto em relação ao mês passado), dê um 'puxão de orelha' divertido e parceiro! Reclame que ele tá gastando demais, mande ele segurar a emoção no cartão, mas sempre de forma bem-humorada, tipo um amigo dando bronca. "
             "IMPORTANTE 2: Ao apresentar valores, contas ou relatórios, seja MUITO visual e direto. Use listas (bullet points), negrito nos valores (ex: *R$ 50,00*) e frases curtas. Facilite a leitura para que o usuário entenda só de bater o olho, sem precisar ler parágrafos longos. "
+            "IMPORTANTE 3 (RESTRIÇÃO DE RESUMO DIÁRIO): Se a variável 'enviar_resumo_completo' for False E a mensagem atual envolver o registro de um novo gasto ou lembrete (ou seja, se houver ACAO DE SISTEMA executada), você DEVE retornar APENAS uma confirmação super curta, natural, leve e amigável do gasto registrado. NUNCA adicione o resumo do mês, delta, top categorias ou puxão de orelha nessa resposta curta. O resumo financeiro e o puxão de orelha só devem ser enviados se 'enviar_resumo_completo' for True OU se o usuário fez uma pergunta direta sobre seu orçamento/limite (ex: 'quanto gastei?', 'meus pendentes', 'limite'). "
             "Não execute operações, apenas informe sobre os dados fornecidos no contexto ou confirme a ação que acabou de ser feita. "
             "O contexto inclui as categorias, limites, últimos gastos que o usuário teve e contas pendentes que ele não pagou ainda. Use SOMENTE o contexto JSON abaixo para basear sua resposta.\n\n"
             f"Contexto:\n{json.dumps(contexto, ensure_ascii=False)}{texto_acao}\n\n"
+            f"enviar_resumo_completo (relatório e bronca diária permitidos agora?): {'Sim' if enviar_resumo_completo else 'Não'}\n\n"
             f"Pergunta do usuário: {pergunta}"
         )
         
