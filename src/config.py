@@ -3,7 +3,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Carrega segredos de src/.env (cria a partir de .env.example; não commits .env).
+
 load_dotenv()
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
