@@ -20,7 +20,7 @@ def get_db():
 
 
 def _run_lightweight_migrations():
-    # Para SQLite local, adiciona colunas novas sem derrubar dados.
+
     if not DATABASE_URL.startswith("sqlite"):
         return
 
