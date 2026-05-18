@@ -10,8 +10,8 @@ class Base(DeclarativeBase):
 class WhatsappSession(Base):
     __tablename__ = "whatsapp_sessions"
 
-    sender = Column(String, primary_key=True)  # ex: "whatsapp:+5511999999999"
-    modo = Column(String, nullable=False, default="menu")  # "menu" | "assistente"
+    sender = Column(String, primary_key=True) 
+    modo = Column(String, nullable=False, default="menu")  
     limite_mensal = Column(Float, nullable=True)
     atualizado_em = Column(DateTime, default=datetime.now)
     ultimo_resumo_em = Column(DateTime, nullable=True)
