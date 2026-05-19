@@ -126,6 +126,4 @@ Todas as rotas (exceto `/`) exigem o header `X-API-Key` e `X-User-Id`.
 
 ---
 
-## ⚠️ Segurança
 
-Nunca suba o arquivo `.env` para o repositório. Ele já está no `.gitignore`. Revogue qualquer chave que tenha sido exposta acidentalmente.
